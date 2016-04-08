@@ -1,8 +1,5 @@
-import os
+from astropy import modeling
 
-import xtool
+class BackgroundModel(object):
 
-xtool_data_path = os.path.join(xtool.__path__[0], 'data')
-
-
-
+    def

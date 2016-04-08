@@ -6,7 +6,7 @@ from astropy import units as u
 from astropy.io import fits
 from astropy.table import Table
 
-from xtool.model import xtool_data_path
+import xtool
 from xtool.wcs import LUTOrderWCS
 
 
@@ -171,7 +171,7 @@ class XShooterData(object):
 
         return self.read_data(
             self.xshooter_dir,
-            self.transform_pixel_to_wave_fname) * u.arcsecond
+            self.transform_pixel_to_slit_fname) * u.arcsecond
 
 
     def read_spectral_format_table(self):
@@ -409,3 +409,6 @@ class Order(object):
         repr_str = "<Order {num} {dataset}>".format(num=self.order_id,
                                                     dataset=self.data_set_id)
         return repr_str
+
+
+xtool_data_path = os.path.join(xtool.__path__[0], 'data')
