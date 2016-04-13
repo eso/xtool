@@ -3,3 +3,8 @@ formats:
 
 conda:
   file: xtool_env.yml
+
+requirements_file:requirements.txt
+
+python:
+   version: 2
