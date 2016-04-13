@@ -8,5 +8,5 @@ test
 .. toctree::
     :maxdepth: 1
 
-    io
+    notebooks/cookbook_reading.rst
     notebooks/cookbook_fitting.rst

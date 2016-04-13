@@ -1,6 +1,6 @@
 
-Extracting Spectra with xtool
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Modelling XShooter data with xtool
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python
 
@@ -11,7 +11,7 @@ Extracting Spectra with xtool
     from scipy import optimize
 
 Reading XShooter data
-~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^
 
 .. code:: python
 
@@ -132,5 +132,6 @@ The evaluate does both of these steps at the same time
      24.225493274011736,
      32.189878788183037,
      272679.62519832124)
+
 
 

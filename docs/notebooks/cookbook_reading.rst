@@ -1,6 +1,6 @@
 
-Reading Spectra with xtool
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reading XShooter data with xtool
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python
 
