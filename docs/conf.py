@@ -41,6 +41,9 @@ except ImportError:
 # Load all of the global Astropy configuration
 from astropy_helpers.sphinx.conf import *
 
+
+extensions += ['nbsphinx', 'sphinx.ext.mathjax']
+autosummary_generate = False
 # Get configuration information from setup.cfg
 from distutils import config
 conf = config.ConfigParser()
@@ -59,7 +62,7 @@ setup_cfg = dict(conf.items('metadata'))
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 exclude_patterns.append('_templates')
-
+exclude_patterns += ['_build', '**.ipynb_checkpoints']
 # This is added to the end of RST files - a good place to put substitutions to
 # be used globally.
 rst_epilog += """
