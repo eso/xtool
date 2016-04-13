@@ -13,13 +13,13 @@ class LUTOrderWCS(modeling.Model):
                  mask):
         """
         A Look Up Table (LUT) World Coordinate System (WCS) that can transform
-        from pixel coordinate input to
+        from pixel coordinate input to wavelength and slit coordinates
 
         Parameters
         ----------
-        transform_pixel_to_wavelength :
-        transform_pixel_to_slit :
-        mask :
+        transform_pixel_to_wavelength : astropy.units.Quantity
+        transform_pixel_to_slit : astropy.units.Quantity
+        mask : np.ndarray
         """
 
         self.mask = mask
@@ -80,26 +80,33 @@ class LUTOrderWCS(modeling.Model):
         return (np.ma.MaskedArray(x_grid, ~mask, fill_value=-1),
                 np.ma.MaskedArray(y_grid, ~mask, fill_value=-1))
 
+    def _update_mask(self, mask):
+        self.pix_to_wave_ma.mask = mask
+        self.pix_to_slit_ma.mask = mask
+        self.x_grid.mask = mask
+        self.y_grid.mask = mask
+        self.pix_to_wave_grid = self.pix_to_wave_ma.filled()
+        self.pix_to_slit_grid = self.pix_to_slit_ma.filled()
 
 class PolynomialOrderWCS(modeling.Model):
     inputs = ('x', 'y')
     outputs = ('wave', 'slit')
 
     wave_transform_coef = modeling.Parameter()
-    slit_model_coef = modeling.Parameter()
+    slit_transform_coef = modeling.Parameter()
 
 
     @classmethod
-    def from_lut_order_wcs(cls, lut_order_wcs, poly_order):
+    def from_lut_order_wcs(cls, lut_order_wcs, poly_order=(2, 3)):
         """
         Fits a polynomial on n-th degree to the WCS transform
         Parameters
         ----------
         lut_order_wcs : LUTOrderWCS
             Lookup Table WCS to be fit
-        poly_order : int or tuple
+        poly_order : int or tuple, optional
             tuple consisting of two integers describing the polynomial in
-            wave and slit
+            wave and slit default=(2, 3)
 
         Returns
         -------
@@ -117,9 +124,9 @@ class PolynomialOrderWCS(modeling.Model):
 
         return cls(wave_model_coef, slit_model_coef)
 
-    def __init__(self, wave_model_coef, slit_model_coef):
-        super(PolynomialOrderWCS, self).__init__(wave_model_coef,
-                                                 slit_model_coef)
+    def __init__(self, wave_transform_coef, slit_transform_coef):
+        super(PolynomialOrderWCS, self).__init__(wave_transform_coef,
+                                                 slit_transform_coef)
         self.standard_broadcasting = False
 
 

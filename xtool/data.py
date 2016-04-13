@@ -377,20 +377,35 @@ class Order(object):
                                 mask)
 
         return cls(data, uncertainty, flags, mask, order_id,
+                   xshooter_data.instrument_arm,
                    xshooter_data.science_header['ARCFILE'], order_wcs)
 
+    def __init__(self, data, uncertainty, flags, order_mask, order_id,
+                 instrument_arm, data_set_id, wcs):
+        """
 
-    def __init__(self, data, uncertainty, flags, mask, order_id,
-                 data_set_id, order_wcs):
-        self.mask = mask
+        Parameters
+        ----------
+        data : numpy.ndarray
+        uncertainty : numpy.ndarray
+        flags : numpy.ndarray
+        order_mask : numpy.ndarray
+        order_id : int
+        instrument_arm : str
+            can be 'UVB', 'VIS', 'NIR'
+        data_set_id : str
+        wcs : LUTOrderWCS
+        """
+        self.order_mask = order_mask
 
         self.data = self._generate_masked_array(data)
         self.uncertainty = self._generate_masked_array(uncertainty)
         self.flags = self._generate_masked_array(flags, fill_value=-1)
 
         self.order_id = order_id
-        self.order_wcs = order_wcs
+        self.wcs = wcs
         self.data_set_id = data_set_id
+        self.instrument_arm = instrument_arm
 
     def _generate_masked_array(self, data_set, fill_value=np.nan):
         """
@@ -403,11 +418,36 @@ class Order(object):
         -------
         masked_data_set : numpy.ma.MaskedArray
         """
-        return np.ma.MaskedArray(data_set, ~self.mask, fill_value=fill_value)
+        return np.ma.MaskedArray(data_set, ~self.order_mask, fill_value=fill_value)
+
+
+    def _update_mask(self, mask):
+        """
+        Setting a new mask in the masked arrays in both this class and the wcs
+        class
+        Parameters
+        ----------
+        mask : numpy.ndarray
+        """
+        self.data.mask = mask
+        self.uncertainty.mask = mask
+        self.flags.mask = mask
+        self.wcs._update_mask(mask)
+
+
+
+    def enable_flags_as_mask(self):
+        flags_mask = (self.flags.filled() == 0) & self.order_mask
+        self._update_mask(~flags_mask)
+
+
+
+
+
 
     def __repr__(self):
-        repr_str = "<Order {num} {dataset}>".format(num=self.order_id,
-                                                    dataset=self.data_set_id)
+        repr_str = "<Order {num} {dataset} {arm}>".format(
+            num=self.order_id, dataset=self.data_set_id, arm=self.instrument_arm)
         return repr_str
 
 
