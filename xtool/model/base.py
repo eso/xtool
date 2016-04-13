@@ -417,6 +417,7 @@ class OrderModel(object):
         dmatrix = self.generate_design_matrix(**kwargs)
         result = self.solve_design_matrix(dmatrix, order, solver=solver,
                                           solver_dict=solver_dict)
+
         return dmatrix * result[0] * order.uncertainty.compressed()
 
 
