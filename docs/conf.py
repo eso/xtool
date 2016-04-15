@@ -80,13 +80,13 @@ copyright = '{0}, {1}'.format(
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 
-#__import__(setup_cfg['package_name'])
-#package = sys.modules[setup_cfg['package_name']]
+__import__(setup_cfg['package_name'])
+package = sys.modules[setup_cfg['package_name']]
 
 # The short X.Y version.
-#version = package.__version__.split('-', 1)[0]
+version = package.__version__.split('-', 1)[0]
 # The full version, including alpha/beta/rc tags.
-#release = package.__version__
+release = package.__version__
 
 
 # -- Options for HTML output ---------------------------------------------------
@@ -121,8 +121,8 @@ copyright = '{0}, {1}'.format(
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-#html_title = '{0} v{1}'.format(project, release)
-html_title = '{0}'.format(project)
+html_title = '{0} v{1}'.format(project, release)
+#html_title = '{0}'.format(project)
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = project + 'doc'
