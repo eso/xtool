@@ -66,13 +66,6 @@ dependencies:
 - wheel=0.29.0=py27_0
 - zlib=1.2.8=0
 - pip:
-  - backports-abc==0.4
-  - backports.ssl-match-hostname==3.4.0.2
-  - ipython-genutils==0.1.0
-  - jupyter-client==4.2.2
-  - jupyter-console==4.1.1
-  - jupyter-core==4.1.0
   - nbsphinx==0.2.6
   - sphinx-rtd-theme==0.1.9
-  - xtool (/Users/wkerzend/projects/eso/xtool)==0.0.dev8
 

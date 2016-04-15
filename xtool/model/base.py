@@ -185,15 +185,26 @@ class VirtualPixelWavelength(modeling.Model):
 class GenericBackground(modeling.Model):
 
     background_level = modeling.Parameter(bounds=(0, np.inf))
+    matrix_parameter = ['background_level']
     inputs = ()
     outputs = ('row_id', 'column_id', 'value')
 
     def __init__(self, pixel_table):
         self.pixel_table = pixel_table
-        background_level = np.empty_like(pixel_table.wavelength_pixel_id.values)
+        background_level = np.empty_like(
+            pixel_table.wavelength_pixel_id.unique())
         super(GenericBackground, self).__init__(background_level)
-        self.matrix_parameter = ['background_level']
+
         self.standard_broadcasting = False
+        self.matrix_parameter_slices = self._generate_matrix_parameter_slices()
+
+    def _generate_matrix_parameter_slices(self):
+        matrix_parameter_slices = OrderedDict([])
+        for matrix_param in self.matrix_parameter:
+            current_param = getattr(self, matrix_param).value
+            matrix_parameter_slices[matrix_param] = slice(
+                0, current_param.shape[0])
+        return matrix_parameter_slices
 
     def generate_design_matrix_coordinates(self):
         row_ids = self.pixel_table.pixel_id.values
@@ -218,14 +229,23 @@ class MoffatTrace(modeling.Model):
     trace_pos = modeling.Parameter(default=0.0)
     sigma = modeling.Parameter(default=1.0, bounds=(0, np.inf))
     beta = modeling.Parameter(default=1.5, fixed=True, bounds=(0, np.inf))
-
+    matrix_parameter = ['amplitude']
 
     def __init__(self, pixel_table):
         self.pixel_table = pixel_table
-        amplitude = np.empty_like(pixel_table.wavelength_pixel_id.values)
+        amplitude = np.empty_like(pixel_table.wavelength_pixel_id.unique())
         super(MoffatTrace, self).__init__(amplitude=amplitude * np.nan)
         self.standard_broadcasting = False
-        self.matrix_parameter = ['amplitude']
+        self.matrix_parameter_slices = self._generate_matrix_parameter_slices()
+
+    def _generate_matrix_parameter_slices(self):
+        matrix_parameter_slices = OrderedDict([])
+        for matrix_param in self.matrix_parameter:
+            current_param = getattr(self, matrix_param).value
+            matrix_parameter_slices[matrix_param] = slice(
+                0, current_param.shape[0])
+        return matrix_parameter_slices
+
 
 
     def generate_design_matrix_coordinates(self, trace_pos, sigma, beta):
@@ -373,8 +393,8 @@ class OrderModel(object):
             model_call_dict = self._generate_model_call_dict(model, kwargs)
             design_matrices.append(
                 model.generate_design_matrix(**model_call_dict))
-
-        return sparse.hstack(design_matrices)
+        model_widths = [item.shape[1] for item in design_matrices]
+        return sparse.hstack(design_matrices), model_widths
 
 
     @staticmethod
@@ -399,8 +419,6 @@ class OrderModel(object):
 
 
     def solve_design_matrix(self, dmatrix, order, solver='lsmr', solver_dict={},):
-
-
         dmatrix.data /= order.uncertainty.compressed()[dmatrix.row]
         b = order.data.compressed() / order.uncertainty.compressed()
         if solver == 'lsmr':
@@ -408,17 +426,26 @@ class OrderModel(object):
         else:
             raise NotImplementedError('Solver {0} is not implemented'.format(
                 solver))
-
         return result
+
+    def set_matrix_parameters(self, b, model_widths):
+        matrix_model_columns = np.cumsum(model_widths)
+        for i, model in enumerate(self.model_list):
+            for (matrix_parameter,
+                 matrix_slice) in model.matrix_parameter_slices.items():
+                setattr(model, matrix_parameter,
+                        b[matrix_slice.start + matrix_model_columns[i]:
+                        matrix_slice.stop + matrix_model_columns[i]])
 
 
 
     def evaluate(self, order, solver='lsmr', solver_dict={}, **kwargs):
-        dmatrix = self.generate_design_matrix(**kwargs)
+        dmatrix, model_widths = self.generate_design_matrix(**kwargs)
         result = self.solve_design_matrix(dmatrix, order, solver=solver,
                                           solver_dict=solver_dict)
 
-        return dmatrix * result[0] * order.uncertainty.compressed()
+        self.set_matrix_parameters(result[0], model_widths)
+        return (dmatrix * result[0]) * order.uncertainty.compressed()
 
 
     def evaluate_to_frame(self, order, solver='lsmr', solver_dict={}, **kwargs):
