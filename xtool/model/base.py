@@ -226,8 +226,8 @@ class GenericBackground(modeling.Model):
 class MoffatTrace(modeling.Model):
 
     amplitude = modeling.Parameter(bounds=(0, np.inf))
-    trace_pos = modeling.Parameter(default=0.0)
-    sigma = modeling.Parameter(default=1.0, bounds=(0, np.inf))
+    trace_pos = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    sigma = modeling.Parameter(default=1.0, bounds=(0, 99))
     beta = modeling.Parameter(default=1.5, fixed=True, bounds=(0, np.inf))
     matrix_parameter = ['amplitude']
 
@@ -431,11 +431,13 @@ class OrderModel(object):
     def set_matrix_parameters(self, b, model_widths):
         matrix_model_columns = np.cumsum(model_widths)
         for i, model in enumerate(self.model_list):
+            current_matrix_column = (
+                matrix_model_columns[i] - matrix_model_columns[0])
             for (matrix_parameter,
                  matrix_slice) in model.matrix_parameter_slices.items():
                 setattr(model, matrix_parameter,
-                        b[matrix_slice.start + matrix_model_columns[i]:
-                        matrix_slice.stop + matrix_model_columns[i]])
+                        b[matrix_slice.start + current_matrix_column:
+                        matrix_slice.stop + current_matrix_column])
 
 
 
@@ -455,10 +457,16 @@ class OrderModel(object):
         result_frame.data[order.wcs.y, order.wcs.x] = result
         return result_frame
 
-    def evaluate_chi2(self, *args):
-        param_dict = {item:value for item, value in zip(self.param_names, args)}
-        model_xy = self.evaluate_model_xy(**param_dict)
-        return np.sum(((model_xy - self.data_xy) / self.sigma_xy)**2)
+    def evaluate_residuals(self, order, solver='lsmr', solver_dict={},
+                           **kwargs):
+        result = self.evaluate(order, solver, solver_dict, **kwargs)
+        b = order.data.compressed()
+        return ((result - b) / order.uncertainty.compressed())
+
+
+    def evaluate_chi2(self, order, solver='lsmr', solver_dict={}, **kwargs):
+        return np.sum(
+            self.evaluate_residuals(order, solver, solver_dict, **kwargs)**2)
 
     def evaluate_chi2_differential(self, params):
         return self.evaluate_chi2(*params)
