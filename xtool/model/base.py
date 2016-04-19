@@ -1,16 +1,12 @@
-import itertools
 from collections import OrderedDict
 
-from astropy import modeling
 import numpy as np
-from scipy.spatial import cKDTree
-from scipy import sparse
-from scipy import optimize
 import pandas as pd
+from astropy import modeling
+from scipy import sparse
+from scipy.spatial import cKDTree
 
 from xtool.wcs import PolynomialOrderWCS
-
-
 
 FWHM_TO_SIGMA = 1. / (8 * np.log(2))**0.5
 SIGMA_TO_FWHM = 1 / FWHM_TO_SIGMA
@@ -61,8 +57,8 @@ class VirtualPixelWavelength(modeling.Model):
         return VirtualPixelWavelength(polynomial_wcs, order.wcs,
                                       wavelength_bins)
 
-
-    def __init__(self, polynomial_wcs, lut_wcs, wavelength_pixels, sub_sampling=5):
+    def __init__(self, polynomial_wcs, lut_wcs, wavelength_pixels,
+                 sub_sampling=5):
         """
         A model that represents the virtual pixels of the model
 
@@ -174,126 +170,20 @@ class VirtualPixelWavelength(modeling.Model):
 
         pixel_table['wavelength'] = self.wavelength_pixels[
             pixel_table.wavelength_pixel_id]
+
         pixel_table['slit_pos'] = self.lut_wcs.pix_to_slit[
             pixel_table.pixel_id]
+
+        pixel_table['normed_wavelength'] = (
+                (pixel_table.wavelength - pixel_table.wavelength.min()) /
+                (pixel_table.wavelength.max() - pixel_table.wavelength.min())) * 2 - 1
+
 
         if (pixel_table.wavelength_pixel_id.unique().size
                 != self.wavelength_pixels.size):
             raise ValueError("Not all wavelength pixels covered by real pixels")
         return pixel_table
 
-class GenericBackground(modeling.Model):
-
-    background_level = modeling.Parameter(bounds=(0, np.inf))
-    matrix_parameter = ['background_level']
-    inputs = ()
-    outputs = ('row_id', 'column_id', 'value')
-
-    def __init__(self, pixel_table):
-        self.pixel_table = pixel_table
-        background_level = np.empty_like(
-            pixel_table.wavelength_pixel_id.unique())
-        super(GenericBackground, self).__init__(background_level)
-
-        self.standard_broadcasting = False
-        self.matrix_parameter_slices = self._generate_matrix_parameter_slices()
-
-    def _generate_matrix_parameter_slices(self):
-        matrix_parameter_slices = OrderedDict([])
-        for matrix_param in self.matrix_parameter:
-            current_param = getattr(self, matrix_param).value
-            matrix_parameter_slices[matrix_param] = slice(
-                0, current_param.shape[0])
-        return matrix_parameter_slices
-
-    def generate_design_matrix_coordinates(self):
-        row_ids = self.pixel_table.pixel_id.values
-        column_ids = self.pixel_table.wavelength_pixel_id.values
-        matrix_values = self.pixel_table.sub_x.values
-        return row_ids, column_ids, matrix_values
-
-    def generate_design_matrix(self):
-        row_ids, column_ids, matrix_values = (
-            self.generate_design_matrix_coordinates())
-        return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))
-
-    def evaluate(self, background_level):
-        row_ids = self.pixel_table.pixel_id.values.astype(np.int64)
-        column_ids = self.pixel_table.column_ids.values.astype(np.int64)
-        matrix_values = self.pixel_table.sub_x.values
-        return row_ids, column_ids, matrix_values
-
-class MoffatTrace(modeling.Model):
-
-    amplitude = modeling.Parameter(bounds=(0, np.inf))
-    trace_pos = modeling.Parameter(default=0.0, bounds=(-6, 6))
-    sigma = modeling.Parameter(default=1.0, bounds=(0, 99))
-    beta = modeling.Parameter(default=1.5, fixed=True, bounds=(0, np.inf))
-    matrix_parameter = ['amplitude']
-
-    def __init__(self, pixel_table):
-        self.pixel_table = pixel_table
-        amplitude = np.empty_like(pixel_table.wavelength_pixel_id.unique())
-        super(MoffatTrace, self).__init__(amplitude=amplitude * np.nan)
-        self.standard_broadcasting = False
-        self.matrix_parameter_slices = self._generate_matrix_parameter_slices()
-
-    def _generate_matrix_parameter_slices(self):
-        matrix_parameter_slices = OrderedDict([])
-        for matrix_param in self.matrix_parameter:
-            current_param = getattr(self, matrix_param).value
-            matrix_parameter_slices[matrix_param] = slice(
-                0, current_param.shape[0])
-        return matrix_parameter_slices
-
-
-
-    def generate_design_matrix_coordinates(self, trace_pos, sigma, beta):
-        row_ids = self.pixel_table.pixel_id.values
-        column_ids = self.pixel_table.wavelength_pixel_id.values
-        matrix_values = self.pixel_table.sub_x.values
-        moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
-                                      trace_pos, sigma, beta)
-
-        return row_ids, column_ids, matrix_values * moffat_profile
-
-    def generate_design_matrix(self, trace_pos, sigma, beta):
-        row_ids, column_ids, matrix_values = (
-            self.generate_design_matrix_coordinates(trace_pos, sigma, beta))
-        return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))
-
-
-    def evaluate(self, amplitude, trace_pos, sigma, beta):
-        row_ids = self.pixel_table.pixel_id.values.astype(np.int64)
-        column_ids = self.pixel_table.wavelength_pixel_id.values.astype(np.int64)
-        matrix_values = self.pixel_table.sub_x.values
-        moffat_profile = self._moffat(self.pixel_table.slit_pos.values, trace_pos, sigma, beta)
-        return row_ids, column_ids, matrix_values * moffat_profile
-
-
-    @staticmethod
-    def _moffat(s, s0, sigma, beta=1.5):
-        """
-        Calculate the moffat profile
-        Parameters
-        ----------
-        s : ndarray
-            slit position
-        s0 : float
-            center of the Moffat profile
-        sigma : float
-            sigma of the Moffat profile
-        beta : float, optional
-            beta parameter of the Moffat profile (default = 1.5)
-
-        Returns
-        -------
-
-        """
-        fwhm = sigma * SIGMA_TO_FWHM
-        alpha = fwhm / (2 * np.sqrt(2**(1.0 / float(beta)) - 1.0))
-        norm_factor = (beta - 1.0) / (np.pi * alpha**2)
-        return norm_factor * (1.0 + ((s - s0) / alpha)**2)**(-beta)
 
 class OrderModel(object):
 
@@ -302,9 +192,17 @@ class OrderModel(object):
         self.model_list = model_list
 
 
+    def __getitem__(self, item):
+        return self.model_list[item]
+
     @property
-    def parameter_names(self):
+    def fittable_parameter_names(self):
         return self._get_variable_normal_parameters()
+
+    @property
+    def fittable_parameter_dict(self):
+        return OrderedDict([(param_name, getattr(self, param_name).value)
+                            for param_name in self.fittable_parameter_names])
 
     def _get_variable_normal_parameters(self):
         """
@@ -387,14 +285,17 @@ class OrderModel(object):
             result_dict[model.__class__.__name__] = self.result[0][self.model_idx[i]:self.model_idx[i+1]]
         return result_dict
 
-    def generate_design_matrix(self, **kwargs):
+    def generate_design_matrix(self, order, **kwargs):
         design_matrices = []
         for model in self.model_list:
             model_call_dict = self._generate_model_call_dict(model, kwargs)
             design_matrices.append(
                 model.generate_design_matrix(**model_call_dict))
         model_widths = [item.shape[1] for item in design_matrices]
-        return sparse.hstack(design_matrices), model_widths
+
+        dmatrix = sparse.hstack(design_matrices)
+        dmatrix.data /= order.uncertainty.compressed()[dmatrix.row]
+        return dmatrix, model_widths
 
 
     @staticmethod
@@ -417,9 +318,8 @@ class OrderModel(object):
 
         return model_call_dict
 
-
-    def solve_design_matrix(self, dmatrix, order, solver='lsmr', solver_dict={},):
-        dmatrix.data /= order.uncertainty.compressed()[dmatrix.row]
+    def solve_design_matrix(self, dmatrix, order, solver='lsmr',
+                            solver_dict={}):
         b = order.data.compressed() / order.uncertainty.compressed()
         if solver == 'lsmr':
             result = sparse.linalg.lsmr(dmatrix.tobsr(), b, **solver_dict)
@@ -439,16 +339,31 @@ class OrderModel(object):
                         b[matrix_slice.start + current_matrix_column:
                         matrix_slice.stop + current_matrix_column])
 
+    def set_matrix_uncertainties(self, order):
 
+        dmatrix, model_widths = self.generate_design_matrix(
+            order, **self.fittable_parameter_dict)
+        dmatrix_inv = sparse.linalg.inv(dmatrix.T * dmatrix)
+        uncertainties = np.sqrt(dmatrix_inv.diagonal())
+
+        matrix_model_columns = np.cumsum(model_widths)
+        for i, model in enumerate(self.model_list):
+            current_matrix_column = (
+                matrix_model_columns[i] - matrix_model_columns[0])
+            for (matrix_parameter,
+                 matrix_slice) in model.matrix_parameter_slices.items():
+                setattr(
+                    model, matrix_parameter + '_uncertainty',
+                    uncertainties[matrix_slice.start + current_matrix_column:
+                    matrix_slice.stop + current_matrix_column])
 
     def evaluate(self, order, solver='lsmr', solver_dict={}, **kwargs):
-        dmatrix, model_widths = self.generate_design_matrix(**kwargs)
+        dmatrix, model_widths = self.generate_design_matrix(order, **kwargs)
         result = self.solve_design_matrix(dmatrix, order, solver=solver,
                                           solver_dict=solver_dict)
 
         self.set_matrix_parameters(result[0], model_widths)
         return (dmatrix * result[0]) * order.uncertainty.compressed()
-
 
     def evaluate_to_frame(self, order, solver='lsmr', solver_dict={}, **kwargs):
         result = self.evaluate(order, solver, solver_dict, **kwargs)
@@ -468,5 +383,8 @@ class OrderModel(object):
         return np.sum(
             self.evaluate_residuals(order, solver, solver_dict, **kwargs)**2)
 
-    def evaluate_chi2_differential(self, params):
-        return self.evaluate_chi2(*params)
+    def calculate_to_frame(self, order, solver='lsmr', solver_dict={}):
+        return self.evaluate_to_frame(
+            order, solver, solver_dict,
+            **{param_name:self.parameter_dict[param_name].value
+               for param_name in self.fittable_parameter_names})
