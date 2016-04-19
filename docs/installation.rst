@@ -12,4 +12,5 @@ Currently, xtool is designed to work with Python 2.7. We have provided an
 environment that contains all the necessary dependencies for xtool::
 
     curl -O https://raw.githubusercontent.com/eso/xtool/master/xtool_env.yml
-    conda env create -n <yourname_for_the_environment> --file xtool_env
+    conda env create -n <yourname_for_the_environment> --file xtool_env.yml
+    source activate <yourname_for_the_environment>
