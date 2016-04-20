@@ -15,5 +15,6 @@ dependencies:
 - pip:
   - nbsphinx==0.2.6
   - specutils==0.2.0
+  - git+https://github.com/ericmandel/pyds9
   - git+https://github.com/eso/xtool
 
