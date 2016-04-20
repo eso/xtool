@@ -20,7 +20,7 @@ class VirtualPixelWavelength(modeling.Model):
 
     wavelength_sampling_defaults = {'UVB' : 0.04,
                                     'VIS' : 0.04,
-                                    'NIR' : 0.1}
+                                    'NIR' : 0.03}
 
     @classmethod
     def from_order(cls, order, poly_order=(2, 3), wavelength_sampling=None):
