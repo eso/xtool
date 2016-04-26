@@ -340,6 +340,21 @@ class XShooterData(object):
 
         return cutout_data_array, mask
 
+    def get_mask(self, data_array):
+        mask = np.zeros_like(data_array).astype(bool)
+
+        y, x = np.mgrid[:data_array.shape[0], :data_array.shape[1]]
+
+        for order_id in self.order_table.index:
+            slice_y, lower_edge, upper_edge = self.calculate_edges(order_id)
+            mask = mask | ((x > lower_edge[None].T) &
+                           (x < upper_edge[None].T) &
+                           (y > slice_y.start) & (y < slice_y.stop))
+        return mask
+
+
+
+
 
 class Order(object):
 
@@ -450,5 +465,37 @@ class Order(object):
             num=self.order_id, dataset=self.data_set_id, arm=self.instrument_arm)
         return repr_str
 
+
+class MultiOrder(Order):
+
+    @classmethod
+    def from_xshooter_data(cls, xshooter_data):
+        """
+        Construct an xtool.model.Order instance from the an XShooter Data
+        Parameters
+        ----------
+        xshooter_data : xtool.data.XShooterData
+            input X-shooter data
+        order_id : int
+            absolute order ID
+
+        Returns
+        -------
+            : Order
+            order object
+        """
+
+        mask = xshooter_data.get_mask(xshooter_data.science_data)
+        mask[xshooter_data.transform_pix_to_wave == 0.0] = False
+
+
+        order_wcs = LUTOrderWCS(
+            xshooter_data.transform_pix_to_wave,
+            xshooter_data.transform_pix_to_slit, mask)
+
+        return cls(xshooter_data.science_data, xshooter_data.uncertainty,
+                   xshooter_data.flags, mask, None,
+                   xshooter_data.instrument_arm,
+                   xshooter_data.science_header['ARCFILE'], order_wcs)
 
 xtool_data_path = os.path.join(xtool.__path__[0], 'data')

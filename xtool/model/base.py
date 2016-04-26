@@ -57,7 +57,7 @@ class VirtualPixelWavelength(modeling.Model):
         return VirtualPixelWavelength(polynomial_wcs, order.wcs,
                                       wavelength_bins)
 
-    def __init__(self, polynomial_wcs, lut_wcs, wavelength_pixels,
+    def __init__(self, polynomial_wcs, lut_wcs, raw_wavelength_pixels,
                  sub_sampling=5):
         """
         A model that represents the virtual pixels of the model
@@ -66,7 +66,7 @@ class VirtualPixelWavelength(modeling.Model):
         ----------
         polynomial_wcs : xtool.wcs.PolynomialOrderWCS
         lut_wcs : xtool.wcs.LUTOrderWCS
-        wavelength_pixels : numpy.ndarray
+        raw_wavelength_pixels : numpy.ndarray
         sub_sampling : int
             how many subsamples to create in each dimension
         """
@@ -77,7 +77,7 @@ class VirtualPixelWavelength(modeling.Model):
 
         self.lut_wcs = lut_wcs
         self.polynomial_wcs = polynomial_wcs
-        self.wavelength_pixels = wavelength_pixels
+        self.raw_wavelength_pixels = raw_wavelength_pixels
         self.standard_broadcasting = False
         self.sub_sampling = sub_sampling
 
@@ -163,10 +163,20 @@ class VirtualPixelWavelength(modeling.Model):
         sub_pixel_table = self._initialize_sub_pixel_table(
             self.lut_wcs.x, self.lut_wcs.y, self.sub_sampling)
         sub_pixel_table = self._add_wavelength_sub_pixel_table(
-            sub_pixel_table, self.wavelength_pixels,
+            sub_pixel_table, self.raw_wavelength_pixels,
             np.squeeze(wave_transform_coef))
         pixel_table = self._generate_pixel_table(sub_pixel_table,
                                                  self.sub_sampling)
+
+        wavelength_pixel_contain_real_pixel_id = np.sort(
+            pixel_table.wavelength_pixel_id.unique())
+
+        self.wavelength_pixels = self.raw_wavelength_pixels[
+            wavelength_pixel_contain_real_pixel_id]
+
+        pixel_table['wavelength_pixel_id'] = (
+            wavelength_pixel_contain_real_pixel_id.searchsorted(
+                pixel_table.wavelength_pixel_id))
 
         pixel_table['wavelength'] = self.wavelength_pixels[
             pixel_table.wavelength_pixel_id]
@@ -179,9 +189,6 @@ class VirtualPixelWavelength(modeling.Model):
                 (pixel_table.wavelength.max() - pixel_table.wavelength.min())) * 2 - 1
 
 
-        if (pixel_table.wavelength_pixel_id.unique().size
-                != self.wavelength_pixels.size):
-            raise ValueError("Not all wavelength pixels covered by real pixels")
         return pixel_table
 
 
@@ -287,15 +294,19 @@ class OrderModel(object):
 
     def generate_design_matrix(self, order, **kwargs):
         design_matrices = []
+        uncertainties = order.uncertainty.compressed()
         for model in self.model_list:
             model_call_dict = self._generate_model_call_dict(model, kwargs)
-            design_matrices.append(
-                model.generate_design_matrix(**model_call_dict))
+            single_design_matrix =model.generate_design_matrix(
+                **model_call_dict)
+            single_design_matrix.data /= uncertainties[single_design_matrix.row]
+            design_matrices.append(single_design_matrix)
+
         model_widths = [item.shape[1] for item in design_matrices]
 
-        dmatrix = sparse.hstack(design_matrices)
-        dmatrix.data /= order.uncertainty.compressed()[dmatrix.row]
-        return dmatrix, model_widths
+        #dmatrix = sparse.hstack(design_matrices)
+
+        return design_matrices, model_widths
 
 
     @staticmethod
