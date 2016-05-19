@@ -297,7 +297,7 @@ class OrderModel(object):
         uncertainties = order.uncertainty.compressed()
         for model in self.model_list:
             model_call_dict = self._generate_model_call_dict(model, kwargs)
-            single_design_matrix =model.generate_design_matrix(
+            single_design_matrix = model.generate_design_matrix(
                 **model_call_dict)
             single_design_matrix.data /= uncertainties[single_design_matrix.row]
             design_matrices.append(single_design_matrix)
@@ -306,7 +306,7 @@ class OrderModel(object):
 
         #dmatrix = sparse.hstack(design_matrices)
 
-        return design_matrices, model_widths
+        return sparse.hstack(design_matrices), model_widths
 
 
     @staticmethod
