@@ -14,7 +14,7 @@ from xtool.model.base import SIGMA_TO_FWHM
 class LinearLeastSquaredModel(modeling.Model):
 
     def _initialize_lls_model(self, pixel_table, wavelength_pixels):
-        self.pixel_table = pixel_table
+        self.pixel_table = pixel_table.copy()
         self.standard_broadcasting = False
         self.matrix_parameter_slices = self._generate_matrix_parameter_slices()
         self.wavelength_pixels = wavelength_pixels
@@ -56,7 +56,7 @@ class GenericBackground(LinearLeastSquaredModel):
         row_ids = self.pixel_table.pixel_id.values
         column_ids = self.pixel_table.wavelength_pixel_id.values
         matrix_values = self.pixel_table.sub_x.values
-        return row_ids, column_ids, matrix_values
+        return row_ids, column_ids, matrix_values * 1.
 
     def generate_design_matrix(self):
         row_ids, column_ids, matrix_values = (
@@ -67,7 +67,7 @@ class GenericBackground(LinearLeastSquaredModel):
         row_ids = self.pixel_table.pixel_id.values.astype(np.int64)
         column_ids = self.pixel_table.column_ids.values.astype(np.int64)
         matrix_values = self.pixel_table.sub_x.values
-        return row_ids, column_ids, matrix_values
+        return row_ids, column_ids, matrix_values * 1.
 
 
 class MoffatTrace(LinearLeastSquaredModel):
@@ -87,7 +87,8 @@ class MoffatTrace(LinearLeastSquaredModel):
     def generate_design_matrix_coordinates(self, trace_pos, sigma, beta):
         row_ids = self.pixel_table.pixel_id.values
         column_ids = self.pixel_table.wavelength_pixel_id.values
-        matrix_values = self.pixel_table.sub_x.values
+        matrix_values = self.pixel_table.sub_x.values.copy()
+        print self.pixel_table.sub_x.values.sum()
         moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
                                       trace_pos, sigma, beta)
 
@@ -102,7 +103,7 @@ class MoffatTrace(LinearLeastSquaredModel):
     def evaluate(self, amplitude, trace_pos, sigma, beta):
         row_ids = self.pixel_table.pixel_id.values.astype(np.int64)
         column_ids = self.pixel_table.wavelength_pixel_id.values.astype(np.int64)
-        matrix_values = self.pixel_table.sub_x.values
+        matrix_values = self.pixel_table.sub_x.values.copy()
         moffat_profile = self._moffat(self.pixel_table.slit_pos.values, trace_pos, sigma, beta)
         return row_ids, column_ids, matrix_values * moffat_profile
 
