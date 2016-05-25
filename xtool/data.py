@@ -18,7 +18,7 @@ class XShooterData(object):
 
     spectral_format_fname = 'SPECTRAL_FORMAT_TAB'
 
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, data_fname=None):
         """
 
         Parameters
@@ -27,6 +27,8 @@ class XShooterData(object):
 
         """
 
+        if data_fname is not None:
+            self.data_fname = data_fname
 
         data_full_fname = glob(os.path.join(
             data_dir, '{0}*'.format(self.data_fname)))
