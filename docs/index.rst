@@ -9,6 +9,7 @@ A example dataset is available from `here <http://opensupernova.org/~wkerzend/fi
     :maxdepth: 1
 
     installation
+    generating_data
     notebooks/cookbook_reading.ipynb
     notebooks/cookbook_modeling.ipynb
     notebooks/cookbook_fitting.ipynb
