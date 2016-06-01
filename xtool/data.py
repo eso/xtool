@@ -209,7 +209,6 @@ class XShooterData(object):
         return "<XShooterData {0} {1}>".format(self.science_header['ARCFILE'],
                                                self.instrument_arm)
 
-
     def get_order_coefficients(self, order_id):
         """
         Getting the polynomial coefficients for a specific order

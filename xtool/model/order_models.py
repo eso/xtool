@@ -36,7 +36,18 @@ class LinearLeastSquaredModel(modeling.Model):
                 0, current_param.shape[0])
         return matrix_parameter_slices
 
+    def update_pixel_table(self, pixel_table):
+        """
+        Update the pixel table that defines the virtual pixels
 
+        Parameters
+        ----------
+        pixel_table : pandas.DataFrame
+
+
+        """
+
+        self.pixel_table = pixel_table
 
 class GenericBackground(LinearLeastSquaredModel):
 

@@ -194,9 +194,10 @@ class VirtualPixelWavelength(modeling.Model):
 
 class OrderModel(object):
 
-    def __init__(self, model_list):
+    def __init__(self, model_list, virtual_pixel=None):
         self.parameter_dict = self._generate_parameter_dict(model_list)
         self.model_list = model_list
+        self.virtual_pixel = virtual_pixel
 
 
     def __getitem__(self, item):
@@ -293,6 +294,29 @@ class OrderModel(object):
         return result_dict
 
     def generate_design_matrix(self, order, **kwargs):
+        """
+        Generate the Design matrix for solving the Linear Least Squares problem
+        Parameters
+        ----------
+        order : xtool.data.Order objects
+        kwargs : fittable kwargs
+
+        Returns
+        -------
+        """
+
+        if 'wave_transform_coef' in kwargs:
+
+            wave_transform_coef = (
+                kwargs['wave_transform_coef'].reshape(
+                    self.virtual_pixel.wave_transform_coef.shape))
+            self.virtual_pixel.wave_transform_coef = wave_transform_coef
+            pixel_table = self.virtual_pixel()
+            for model in self.model_list:
+                if hasattr(model, 'update_pixel_table'):
+                    model.update_pixel_table(pixel_table)
+
+
         design_matrices = []
         uncertainties = order.uncertainty.compressed()
         for model in self.model_list:
