@@ -36,7 +36,7 @@ class VirtualPixelWavelength(modeling.Model):
             float for wavelength spacing. If `None` will use for different arms
             * UVB - 0.04 nm
             * VIS - 0.04 nm
-            * NIR - 0.1 nm
+            * NIR - 0.03 nm
 
         Returns
         -------
@@ -205,11 +205,16 @@ class OrderModel(object):
 
     @property
     def fittable_parameter_names(self):
-        return self._get_variable_normal_parameters()
+
+        fittable_parameter_names = self._get_variable_normal_parameters()
+        if self.virtual_pixel is not None:
+            fittable_parameter_names += ['wave_transform_coef']
+        return fittable_parameter_names
+
 
     @property
     def fittable_parameter_dict(self):
-        return OrderedDict([(param_name, getattr(self, param_name).value)
+        return OrderedDict([(param_name, getattr(self, param_name))
                             for param_name in self.fittable_parameter_names])
 
     def _get_variable_normal_parameters(self):
@@ -396,8 +401,6 @@ class OrderModel(object):
         dmatrix, model_widths = self.generate_design_matrix(order, **kwargs)
         result = self.solve_design_matrix(dmatrix, order, solver=solver,
                                           solver_dict=solver_dict)
-
-        self.set_matrix_parameters(result[0], model_widths)
         return (dmatrix * result[0]) * order.uncertainty.compressed()
 
     def evaluate_to_frame(self, order, solver='lsmr', solver_dict={}, **kwargs):
@@ -408,10 +411,18 @@ class OrderModel(object):
         return result_frame
 
     def evaluate_residuals(self, order, solver='lsmr', solver_dict={},
-                           **kwargs):
+                           ylim=None, **kwargs):
         result = self.evaluate(order, solver, solver_dict, **kwargs)
         b = order.data.compressed()
-        return ((result - b) / order.uncertainty.compressed())
+
+        if ylim is not None:
+            row_filter = (order.wcs.y > ylim[0]) & (order.wcs.y < ylim[1])
+            result = result[row_filter]
+            b = b[row_filter]
+            uncertainty = order.uncertainty.compressed()[row_filter]
+        else:
+            uncertainty = order.uncertainty.compressed()
+        return ((result - b) / uncertainty)
 
 
     def evaluate_chi2(self, order, solver='lsmr', solver_dict={}, **kwargs):

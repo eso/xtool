@@ -80,6 +80,36 @@ class GenericBackground(LinearLeastSquaredModel):
         matrix_values = self.pixel_table.sub_x.values
         return row_ids, column_ids, matrix_values * 1.
 
+class PolynomialBackground(LinearLeastSquaredModel):
+    background_level = modeling.Parameter(bounds=(0, np.inf))
+    matrix_parameter = ['background_level']
+    inputs = ()
+    outputs = ('row_id', 'column_id', 'value')
+
+    def __init__(self, pixel_table, wavelength_pixels):
+        background_level = np.empty_like(
+            pixel_table.wavelength_pixel_id.unique())
+        super(GenericBackground, self).__init__(background_level)
+        self._initialize_lls_model(pixel_table, wavelength_pixels)
+
+
+    def generate_design_matrix_coordinates(self):
+        row_ids = self.pixel_table.pixel_id.values
+        column_ids = self.pixel_table.wavelength_pixel_id.values
+        matrix_values = self.pixel_table.sub_x.values
+        return row_ids, column_ids, matrix_values * 1.
+
+    def generate_design_matrix(self):
+        row_ids, column_ids, matrix_values = (
+            self.generate_design_matrix_coordinates())
+        return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))
+
+    def evaluate(self, background_level):
+        row_ids = self.pixel_table.pixel_id.values.astype(np.int64)
+        column_ids = self.pixel_table.column_ids.values.astype(np.int64)
+        matrix_values = self.pixel_table.sub_x.values
+        return row_ids, column_ids, matrix_values * 1.
+
 
 class MoffatTrace(LinearLeastSquaredModel):
 
@@ -99,7 +129,6 @@ class MoffatTrace(LinearLeastSquaredModel):
         row_ids = self.pixel_table.pixel_id.values
         column_ids = self.pixel_table.wavelength_pixel_id.values
         matrix_values = self.pixel_table.sub_x.values.copy()
-        print self.pixel_table.sub_x.values.sum()
         moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
                                       trace_pos, sigma, beta)
 
