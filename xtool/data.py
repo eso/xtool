@@ -1,6 +1,8 @@
 import os
 from glob import glob
 
+import matplotlib as mpl
+import matplotlib.cm
 import numpy as np
 from astropy import units as u
 from astropy.io import fits
@@ -190,7 +192,12 @@ class XShooterData(object):
         spectral_format = Table.read(
             os.path.join(xtool_data_path, '{0}_{1}.fits'.format(
                 self.spectral_format_fname, self.instrument_arm))).to_pandas()
-        return spectral_format.set_index['ORDER']
+        spectral_format['ORDER'] = spectral_format['ORDER'].astype(int)
+
+        spectral_format = spectral_format.set_index('ORDER')
+        spectral_format.index = spectral_format.index.rename('ABSORDER')
+        return spectral_format
+
 
     def read_order_table(self):
         """
@@ -232,9 +239,15 @@ class XShooterData(object):
         """
 
         order_data = self.order_table.ix[order_id]
+        spectral_format_table = self.spectral_format_table.ix[order_id]
         deg = np.int(order_data['DEGY'])
-        slice_y = slice(np.int(order_data['STARTY']) - 1,
-                        np.int(order_data['ENDY']) - 1)
+        if self.instrument_arm == 'NIR' and order_id > 15:
+            slice_y = slice(np.int(spectral_format_table['YMIN']) - 1 + 30,
+                            np.int(spectral_format_table['YMAX']) - 1 - 30)
+
+        else:
+            slice_y = slice(np.int(spectral_format_table['YMIN']) - 1,
+                            np.int(spectral_format_table['YMAX']) - 1)
 
         edg_up_coef = [order_data['EDGUPCOEF{0}'.format(i)]
                        for i in xrange(deg + 1)]
@@ -354,7 +367,36 @@ class XShooterData(object):
         return mask
 
 
+    def display_data(self, figure, vmin=0, vmax=500,
+                     cmap=matplotlib.cm.gray):
+        """
+        Displau the XShooter data in
 
+        Parameters
+        ----------
+        figure : matplotlib.Figure
+        vmin : minimum cut [default=0]
+        vmax : maximum cut [default=500]
+        cmap : matplotlib colormaps [default 'gray']
+
+        """
+        ax = figure.add_subplot(111)
+        ax.imshow(self.science_data, vmin=vmin, vmax=vmax, cmap=cmap)
+        for order_id in self.order_table.index:
+            slice_y, low_edge, up_edge = self.calculate_edges(order_id)
+            slice_y2 = slice(
+                self.spectral_format_table.loc[order_id, 'YMIN'] - 1 + 50,
+                self.spectral_format_table.loc[order_id, 'YMAX'] - 1 - 50)
+
+            ax.plot(low_edge, np.arange(2040), color='blue', lw=2)
+            ax.plot(up_edge, np.arange(2040), color='red', lw=2)
+            ax.plot([low_edge[slice_y.start], up_edge[slice_y.start]],
+                 [slice_y.start, slice_y.start], color='purple', lw=2)
+            ax.plot([low_edge[slice_y.stop], up_edge[slice_y.stop]],
+                 [slice_y.stop, slice_y.stop], color='purple', lw=2)
+            ax.text(0.5 * (low_edge[1020] + up_edge[1020]), 1020, str(order_id),
+                 verticalalignment='center', horizontalalignment='center',
+                 bbox=dict(facecolor='white'))
 
 
 class Order(object):
