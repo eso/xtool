@@ -210,18 +210,18 @@ class SlopedMoffatTrace(MoffatTrace):
         row_ids = self.pixel_table.pixel_id.values
         column_ids = self.pixel_table.wavelength_pixel_id.values
         matrix_values = self.pixel_table.sub_x.values
-        normed_wavelength = self.pixel_table.normed_wavelength
+        normed_wavelength = self.pixel_table.normed_wavelength.values.copy()
         varying_trace_pos = (trace_pos + trace_slope * normed_wavelength)
-        varying_sigma = (sigma + sigma_slope * normed_wavelength)
+        varying_sigma = (sigma + sigma_slope * 0.5 * (normed_wavelength + 1))
         moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
                                       varying_trace_pos, varying_sigma, beta)
-
         return row_ids, column_ids, matrix_values * moffat_profile
 
-    def generate_design_matrix(self, trace_pos, trace_slope, sigma, beta):
+    def generate_design_matrix(self, trace_pos, trace_slope, sigma,
+                               sigma_slope, beta):
         row_ids, column_ids, matrix_values = (
             self.generate_design_matrix_coordinates(trace_pos, trace_slope,
-                                                    sigma, beta))
+                                                    sigma, sigma_slope, beta))
         return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))
 
     def evaluate(self, amplitude, trace_pos, trace_slope, sigma, beta):

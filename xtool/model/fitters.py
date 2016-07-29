@@ -117,10 +117,15 @@ class Fitter(object):
         call_param_dict = {}
         current_idx = 0
         for i, param_name in enumerate(self.model.fittable_parameter_names):
+
             param_len = param_shape[i]
             call_param_dict[param_name] = param_values[
                                           current_idx:current_idx + param_len]
-        return self.model.evaluate_chi2(self.order, ylim=ylim, **call_param_dict)
+            current_idx = current_idx + param_len
+
+        chi2 = self.model.evaluate_chi2(self.order, ylim=ylim,
+                                        **call_param_dict)
+        return chi2
 
     def _calculate_residuals(self, param_values, ylim=None):
         call_param_dict = {key: value for key, value in zip(
