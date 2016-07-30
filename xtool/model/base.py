@@ -5,6 +5,7 @@ import pandas as pd
 from astropy import modeling
 from scipy import sparse
 from scipy.spatial import cKDTree
+from scipy.optimize import lsq_linear
 
 from xtool.wcs import PolynomialOrderWCS
 
@@ -363,12 +364,18 @@ class OrderModel(object):
         b = order.data.compressed() / order.uncertainty.compressed()
         if solver == 'lsmr':
             result = sparse.linalg.lsmr(dmatrix.tobsr(), b, **solver_dict)
+        elif solver == 'lsq':
+            lsq_dict = dict(bounds=(0, np.inf), lsmr_tol='auto', verbose=1)
+            lsq_dict.update(solver_dict)
+            result = lsq_linear(dmatrix, b,  **lsq_dict)
+            result = [result.x, result]
+
         else:
             raise NotImplementedError('Solver {0} is not implemented'.format(
                 solver))
         return result
 
-    def set_matrix_parameters(self, b, model_widths):
+    def set_matrix_parameters(self, result, model_widths):
         matrix_model_columns = np.cumsum(model_widths)
         for i, model in enumerate(self.model_list):
             current_matrix_column = (
@@ -376,7 +383,7 @@ class OrderModel(object):
             for (matrix_parameter,
                  matrix_slice) in model.matrix_parameter_slices.items():
                 setattr(model, matrix_parameter,
-                        b[matrix_slice.start + current_matrix_column:
+                        result[matrix_slice.start + current_matrix_column:
                         matrix_slice.stop + current_matrix_column])
 
     def set_matrix_uncertainties(self, order):
@@ -401,6 +408,7 @@ class OrderModel(object):
         dmatrix, model_widths = self.generate_design_matrix(order, **kwargs)
         result = self.solve_design_matrix(dmatrix, order, solver=solver,
                                           solver_dict=solver_dict)
+        self.set_matrix_parameters(result[0], model_widths)
         return (dmatrix * result[0]) * order.uncertainty.compressed()
 
     def evaluate_to_frame(self, order, solver='lsmr', solver_dict={}, **kwargs):

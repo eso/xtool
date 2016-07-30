@@ -89,7 +89,8 @@ class Fitter(object):
         for param_name, param_value in zip(self.model.fittable_parameter_names,
                                            result['x']):
             setattr(self.model, param_name, param_value)
-        #self.model.set_matrix_uncertainties(self.order)
+        #self.model.set_matrix_parameters()
+        self.model.set_matrix_uncertainties(self.order)
         return result
 
 
@@ -102,8 +103,8 @@ class Fitter(object):
             **kwargs)
 
 
-        print "change back this is only for test"
-        return result
+#        print "change back this is only for test"
+#        return result
 
         for param_name, param_value in zip(self.model.fittable_parameter_names,
                                            result['x']):

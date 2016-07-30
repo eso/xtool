@@ -59,7 +59,7 @@ class GenericBackground(LinearLeastSquaredModel):
     def __init__(self, pixel_table, wavelength_pixels):
         background_level = np.empty_like(
             pixel_table.wavelength_pixel_id.unique())
-        super(GenericBackground, self).__init__(background_level)
+        super(GenericBackground, self).__init__(background_level=background_level*np.nan)
         self._initialize_lls_model(pixel_table, wavelength_pixels)
 
 
@@ -231,7 +231,6 @@ class SlopedMoffatTrace(MoffatTrace):
         matrix_values = self.pixel_table.sub_x.values
         varying_trace_pos = (
             trace_pos + trace_slope * self.pixel_table.normaled_wavelength)
-        print "changed slope"
         moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
                                       varying_trace_pos, sigma, beta)
         return row_ids, column_ids, matrix_values * moffat_profile
