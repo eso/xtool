@@ -36,10 +36,51 @@ class LinearLeastSquaredModel(modeling.Model):
                 0, current_param.shape[0])
         return matrix_parameter_slices
 
+    def update_pixel_table(self, pixel_table):
+        """
+        Update the pixel table that defines the virtual pixels
 
+        Parameters
+        ----------
+        pixel_table : pandas.DataFrame
+
+
+        """
+
+        self.pixel_table = pixel_table
 
 class GenericBackground(LinearLeastSquaredModel):
 
+    background_level = modeling.Parameter(bounds=(0, np.inf))
+    matrix_parameter = ['background_level']
+    inputs = ()
+    outputs = ('row_id', 'column_id', 'value')
+
+    def __init__(self, pixel_table, wavelength_pixels):
+        background_level = np.empty_like(
+            pixel_table.wavelength_pixel_id.unique())
+        super(GenericBackground, self).__init__(background_level=background_level*np.nan)
+        self._initialize_lls_model(pixel_table, wavelength_pixels)
+
+
+    def generate_design_matrix_coordinates(self):
+        row_ids = self.pixel_table.pixel_id.values
+        column_ids = self.pixel_table.wavelength_pixel_id.values
+        matrix_values = self.pixel_table.sub_x.values
+        return row_ids, column_ids, matrix_values * 1.
+
+    def generate_design_matrix(self):
+        row_ids, column_ids, matrix_values = (
+            self.generate_design_matrix_coordinates())
+        return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))
+
+    def evaluate(self, background_level):
+        row_ids = self.pixel_table.pixel_id.values.astype(np.int64)
+        column_ids = self.pixel_table.column_ids.values.astype(np.int64)
+        matrix_values = self.pixel_table.sub_x.values
+        return row_ids, column_ids, matrix_values * 1.
+
+class PolynomialBackground(LinearLeastSquaredModel):
     background_level = modeling.Parameter(bounds=(0, np.inf))
     matrix_parameter = ['background_level']
     inputs = ()
@@ -88,7 +129,6 @@ class MoffatTrace(LinearLeastSquaredModel):
         row_ids = self.pixel_table.pixel_id.values
         column_ids = self.pixel_table.wavelength_pixel_id.values
         matrix_values = self.pixel_table.sub_x.values.copy()
-        print self.pixel_table.sub_x.values.sum()
         moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
                                       trace_pos, sigma, beta)
 
@@ -143,6 +183,7 @@ class MoffatTrace(LinearLeastSquaredModel):
         -------
 
         """
+        beta = getattr(beta, 'value', beta)
         fwhm = sigma * SIGMA_TO_FWHM
         alpha = fwhm / (2 * np.sqrt(2**(1.0 / float(beta)) - 1.0))
         norm_factor = (beta - 1.0) / (np.pi * alpha**2)
@@ -154,6 +195,7 @@ class SlopedMoffatTrace(MoffatTrace):
     trace_pos = modeling.Parameter(default=0.0, bounds=(-6, 6))
     trace_slope = modeling.Parameter(default=0.0, bounds=(-0.5, 0.5))
     sigma = modeling.Parameter(default=1.0, bounds=(0, 99))
+    sigma_slope = modeling.Parameter(default=0.0, bounds=(-0.5, 0.5))
     beta = modeling.Parameter(default=1.5, fixed=True, bounds=(1.1, 3.))
     matrix_parameter = ['amplitude']
 
@@ -165,19 +207,22 @@ class SlopedMoffatTrace(MoffatTrace):
 
 
     def generate_design_matrix_coordinates(self, trace_pos, trace_slope, sigma,
-                                           beta):
+                                           sigma_slope, beta):
         row_ids = self.pixel_table.pixel_id.values
         column_ids = self.pixel_table.wavelength_pixel_id.values
         matrix_values = self.pixel_table.sub_x.values
+        normed_wavelength = self.pixel_table.normed_wavelength.values.copy()
+        varying_trace_pos = (trace_pos + trace_slope * normed_wavelength)
+        varying_sigma = (sigma + sigma_slope * 0.5 * (normed_wavelength + 1))
         moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
-                                      trace_pos, sigma, beta)
-
+                                      varying_trace_pos, varying_sigma, beta)
         return row_ids, column_ids, matrix_values * moffat_profile
 
-    def generate_design_matrix(self, trace_pos, trace_slope, sigma, beta):
+    def generate_design_matrix(self, trace_pos, trace_slope, sigma,
+                               sigma_slope, beta):
         row_ids, column_ids, matrix_values = (
             self.generate_design_matrix_coordinates(trace_pos, trace_slope,
-                                                    sigma, beta))
+                                                    sigma, sigma_slope, beta))
         return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))
 
     def evaluate(self, amplitude, trace_pos, trace_slope, sigma, beta):
@@ -190,3 +235,47 @@ class SlopedMoffatTrace(MoffatTrace):
         moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
                                       varying_trace_pos, sigma, beta)
         return row_ids, column_ids, matrix_values * moffat_profile
+
+
+
+class PolynomialMoffatTrace(MoffatTrace):
+    amplitude = modeling.Parameter(bounds=(0, np.inf))
+    trace0 = modeling.Parameter(default=1.0, bounds=(-6, 6))
+    trace1 = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    trace2 = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    trace3 = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    trace4 = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    sigma0 = modeling.Parameter(default=1.0, bounds=(0, 99))
+    sigma1 = modeling.Parameter(default=0.0, bounds=(0, 99))
+    sigma2 = modeling.Parameter(default=1.0, bounds=(0, 99))
+    sigma3 = modeling.Parameter(default=1.0, bounds=(0, 99))
+    sigma4 = modeling.Parameter(default=1.0, bounds=(0, 99))
+    beta = modeling.Parameter(default=1.5, fixed=True, bounds=(1.1, 3.))
+    matrix_parameter = ['amplitude']
+
+
+    def __init__(self, pixel_table, wavelength_pixels, **kwargs):
+        amplitude = np.empty_like(pixel_table.wavelength_pixel_id.unique())
+        super(MoffatTrace, self).__init__(amplitude=amplitude * np.nan, **kwargs)
+        self._initialize_lls_model(pixel_table, wavelength_pixels)
+
+
+    def generate_design_matrix_coordinates(self, trace0, trace1, trace2, trace3,
+                                           trace4, sigma0, sigma1, sigma2, sigma3, sigma4, beta):
+        row_ids = self.pixel_table.pixel_id.values
+        column_ids = self.pixel_table.wavelength_pixel_id.values
+        matrix_values = self.pixel_table.sub_x.values
+        normed_wavelength = self.pixel_table.normed_wavelength.values.copy()
+        varying_trace_pos = np.polyval([trace4, trace3, trace2, trace1, trace0],
+                                       normed_wavelength)
+        varying_sigma = np.abs(np.polyval([sigma3, sigma2, sigma1, sigma0],normed_wavelength))
+        moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
+                                      varying_trace_pos, varying_sigma, beta)
+        return row_ids, column_ids, matrix_values * moffat_profile
+
+    def generate_design_matrix(self, trace0, trace1, trace2, trace3, trace4,
+                               sigma0, sigma1, sigma2, sigma3, sigma4, beta):
+        row_ids, column_ids, matrix_values = (
+            self.generate_design_matrix_coordinates(
+                trace0, trace1, trace2, trace3, trace4, sigma0, sigma1, sigma2, sigma3, sigma4, beta))
+        return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))

@@ -5,6 +5,7 @@ import pandas as pd
 from astropy import modeling
 from scipy import sparse
 from scipy.spatial import cKDTree
+from scipy.optimize import lsq_linear
 
 from xtool.wcs import PolynomialOrderWCS
 
@@ -23,7 +24,8 @@ class VirtualPixelWavelength(modeling.Model):
                                     'NIR' : 0.03}
 
     @classmethod
-    def from_order(cls, order, poly_order=(2, 3), wavelength_sampling=None):
+    def from_order(cls, order, poly_order=(2, 3), wavelength_sampling=None,
+                   sub_sampling=5):
         """
         Instantiate a Virtualpixel table from the order raw Lookup Table WCS
         and then fitting a Polynomial WCS with given orde
@@ -36,7 +38,7 @@ class VirtualPixelWavelength(modeling.Model):
             float for wavelength spacing. If `None` will use for different arms
             * UVB - 0.04 nm
             * VIS - 0.04 nm
-            * NIR - 0.1 nm
+            * NIR - 0.03 nm
 
         Returns
         -------
@@ -55,7 +57,8 @@ class VirtualPixelWavelength(modeling.Model):
             wavelength_sampling)
 
         return VirtualPixelWavelength(polynomial_wcs, order.wcs,
-                                      wavelength_bins)
+                                      wavelength_bins,
+                                      sub_sampling=sub_sampling)
 
     def __init__(self, polynomial_wcs, lut_wcs, raw_wavelength_pixels,
                  sub_sampling=5):
@@ -179,10 +182,10 @@ class VirtualPixelWavelength(modeling.Model):
                 pixel_table.wavelength_pixel_id))
 
         pixel_table['wavelength'] = self.wavelength_pixels[
-            pixel_table.wavelength_pixel_id]
+            pixel_table.wavelength_pixel_id].astype(np.float64)
 
         pixel_table['slit_pos'] = self.lut_wcs.pix_to_slit[
-            pixel_table.pixel_id]
+            pixel_table.pixel_id].astype(np.float64)
 
         pixel_table['normed_wavelength'] = (
                 (pixel_table.wavelength - pixel_table.wavelength.min()) /
@@ -194,9 +197,10 @@ class VirtualPixelWavelength(modeling.Model):
 
 class OrderModel(object):
 
-    def __init__(self, model_list):
+    def __init__(self, model_list, virtual_pixel=None):
         self.parameter_dict = self._generate_parameter_dict(model_list)
         self.model_list = model_list
+        self.virtual_pixel = virtual_pixel
 
 
     def __getitem__(self, item):
@@ -204,11 +208,16 @@ class OrderModel(object):
 
     @property
     def fittable_parameter_names(self):
-        return self._get_variable_normal_parameters()
+
+        fittable_parameter_names = self._get_variable_normal_parameters()
+        if self.virtual_pixel is not None:
+            fittable_parameter_names += ['wave_transform_coef']
+        return fittable_parameter_names
+
 
     @property
     def fittable_parameter_dict(self):
-        return OrderedDict([(param_name, getattr(self, param_name).value)
+        return OrderedDict([(param_name, getattr(self, param_name))
                             for param_name in self.fittable_parameter_names])
 
     def _get_variable_normal_parameters(self):
@@ -293,6 +302,29 @@ class OrderModel(object):
         return result_dict
 
     def generate_design_matrix(self, order, **kwargs):
+        """
+        Generate the Design matrix for solving the Linear Least Squares problem
+        Parameters
+        ----------
+        order : xtool.data.Order objects
+        kwargs : fittable kwargs
+
+        Returns
+        -------
+        """
+
+        if 'wave_transform_coef' in kwargs:
+
+            wave_transform_coef = (
+                kwargs['wave_transform_coef'].reshape(
+                    self.virtual_pixel.wave_transform_coef.shape))
+            self.virtual_pixel.wave_transform_coef = wave_transform_coef
+            pixel_table = self.virtual_pixel()
+            for model in self.model_list:
+                if hasattr(model, 'update_pixel_table'):
+                    model.update_pixel_table(pixel_table)
+
+
         design_matrices = []
         uncertainties = order.uncertainty.compressed()
         for model in self.model_list:
@@ -334,12 +366,18 @@ class OrderModel(object):
         b = order.data.compressed() / order.uncertainty.compressed()
         if solver == 'lsmr':
             result = sparse.linalg.lsmr(dmatrix.tobsr(), b, **solver_dict)
+        elif solver == 'lsq':
+            lsq_dict = dict(bounds=(0, np.inf), lsmr_tol='auto', verbose=1)
+            lsq_dict.update(solver_dict)
+            result = lsq_linear(dmatrix, b,  **lsq_dict)
+            result = [result.x, result]
+
         else:
             raise NotImplementedError('Solver {0} is not implemented'.format(
                 solver))
         return result
 
-    def set_matrix_parameters(self, b, model_widths):
+    def set_matrix_parameters(self, result, model_widths):
         matrix_model_columns = np.cumsum(model_widths)
         for i, model in enumerate(self.model_list):
             current_matrix_column = (
@@ -347,7 +385,7 @@ class OrderModel(object):
             for (matrix_parameter,
                  matrix_slice) in model.matrix_parameter_slices.items():
                 setattr(model, matrix_parameter,
-                        b[matrix_slice.start + current_matrix_column:
+                        result[matrix_slice.start + current_matrix_column:
                         matrix_slice.stop + current_matrix_column])
 
     def set_matrix_uncertainties(self, order):
@@ -372,7 +410,6 @@ class OrderModel(object):
         dmatrix, model_widths = self.generate_design_matrix(order, **kwargs)
         result = self.solve_design_matrix(dmatrix, order, solver=solver,
                                           solver_dict=solver_dict)
-
         self.set_matrix_parameters(result[0], model_widths)
         return (dmatrix * result[0]) * order.uncertainty.compressed()
 
@@ -384,10 +421,18 @@ class OrderModel(object):
         return result_frame
 
     def evaluate_residuals(self, order, solver='lsmr', solver_dict={},
-                           **kwargs):
+                           ylim=None, **kwargs):
         result = self.evaluate(order, solver, solver_dict, **kwargs)
         b = order.data.compressed()
-        return ((result - b) / order.uncertainty.compressed())
+
+        if ylim is not None:
+            row_filter = (order.wcs.y > ylim[0]) & (order.wcs.y < ylim[1])
+            result = result[row_filter]
+            b = b[row_filter]
+            uncertainty = order.uncertainty.compressed()[row_filter]
+        else:
+            uncertainty = order.uncertainty.compressed()
+        return ((result - b) / uncertainty)
 
 
     def evaluate_chi2(self, order, solver='lsmr', solver_dict={}, **kwargs):
