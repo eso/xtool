@@ -67,7 +67,12 @@ class XShooterData(object):
         -------
             : int
         """
-        return self.science_header.get("HIERARCH ESO DET WIN1 BINX", 2)
+
+        if "HIERARCH ESO DET WIN1 BINX" not in self.science_header:
+            print "WARNING: XBin not known defaulting to 1"
+            return 1
+        else:
+            return self.science_header.get("HIERARCH ESO DET WIN1 BINX")
 
     @property
     def ybin(self):
@@ -76,8 +81,12 @@ class XShooterData(object):
         -------
             : int
         """
-
-        return self.science_header.get("HIERARCH ESO DET WIN1 BINY", 2)
+        
+        if "HIERARCH ESO DET WIN1 BINY" not in self.science_header:
+            print "WARNING: YBin not known defaulting to 1"
+            return 1
+        else:
+            return self.science_header.get("HIERARCH ESO DET WIN1 BINY")
 
     def read_data(self, xshooter_dir, data_fname, ext=0):
         """
@@ -244,10 +253,11 @@ class XShooterData(object):
         if self.instrument_arm == 'NIR' and order_id > 15:
             slice_y = slice(np.int(spectral_format_table['YMIN']) - 1 + 30,
                             np.int(spectral_format_table['YMAX']) - 1 - 30)
-
+        elif 'YMIN' in spectral_format_table:
+            slice_y = slice(np.int(spectral_format_table.get('YMIN') - 1),
+                            np.int(spectral_format_table.get('YMAX') - 1))
         else:
-            slice_y = slice(np.int(spectral_format_table['YMIN']) - 1,
-                            np.int(spectral_format_table['YMAX']) - 1)
+            slice_y = slice(None, None)
 
         edg_up_coef = [order_data['EDGUPCOEF{0}'.format(i)]
                        for i in xrange(deg + 1)]
@@ -277,7 +287,7 @@ class XShooterData(object):
         """
 
         slice_y, edg_up_coef, edg_lo_coef = self.get_order_coefficients(order_id)
-        yrange = (np.arange(self.science_data.shape[0]))
+        yrange = (np.arange(self.science_data.shape[0]) * self.ybin)
 
 
         lower_edges = np.polynomial.polynomial.polyval(
@@ -348,9 +358,12 @@ class XShooterData(object):
         slice_y, lower_edge, upper_edge = self.calculate_edges(order_id)
         y, x = np.mgrid[
                :cutout_data_array.shape[0], :cutout_data_array.shape[1]]
+
         mask = ((x > (lower_edge - edge_slice.start)[None].T) &
-                (x < (upper_edge - edge_slice.start)[None].T) &
-                (y > slice_y.start) & (y < slice_y.stop))
+                (x < (upper_edge - edge_slice.start)[None].T))
+
+        if slice_y.start is not None and slice_y.stop is not None:
+            mask = mask & (y > slice_y.start) & (y < slice_y.stop)
 
         return cutout_data_array, mask
 
@@ -384,23 +397,24 @@ class XShooterData(object):
         ax.imshow(self.science_data, vmin=vmin, vmax=vmax, cmap=cmap)
         for order_id in self.order_table.index:
             slice_y, low_edge, up_edge = self.calculate_edges(order_id)
-            slice_y2 = slice(
-                self.spectral_format_table.loc[order_id, 'YMIN'] - 1 + 50,
-                self.spectral_format_table.loc[order_id, 'YMAX'] - 1 - 50)
+#            slice_y2 = slice(
+#                self.spectral_format_table.loc[order_id, 'YMIN'] - 1 + 50,
+#                self.spectral_format_table.loc[order_id, 'YMAX'] - 1 - 50)
 
-            ax.plot(low_edge, np.arange(2040), color='blue', lw=2)
-            ax.plot(up_edge, np.arange(2040), color='red', lw=2)
-            ax.plot([low_edge[slice_y.start], up_edge[slice_y.start]],
-                 [slice_y.start, slice_y.start], color='purple', lw=2)
-            ax.plot([low_edge[slice_y.stop], up_edge[slice_y.stop]],
-                 [slice_y.stop, slice_y.stop], color='purple', lw=2)
-            ax.text(0.5 * (low_edge[1020] + up_edge[1020]), 1020, str(order_id),
+            ax.plot(low_edge, np.arange(len(low_edge)), color='blue', lw=2)
+            ax.plot(up_edge, np.arange(len(up_edge)), color='red', lw=2)
+            if slice_y.start is not None and slice_y.stop is not None:
+                ax.plot([low_edge[slice_y.start], up_edge[slice_y.start]],
+                     [slice_y.start, slice_y.start], color='purple', lw=2)
+                ax.plot([low_edge[slice_y.stop], up_edge[slice_y.stop]],
+                     [slice_y.stop, slice_y.stop], color='purple', lw=2)
+            ax.text(0.5 * (low_edge[len(low_edge)/2] +
+                           up_edge[len(up_edge)/2]), len(low_edge)/2, str(order_id),
                  verticalalignment='center', horizontalalignment='center',
                  bbox=dict(facecolor='white'))
 
 
 class Order(object):
-
     @classmethod
     def from_xshooter_data(cls, xshooter_data, order_id):
         """
@@ -487,10 +501,12 @@ class Order(object):
         ----------
         mask : numpy.ndarray
         """
-        self.data.mask = mask
-        self.uncertainty.mask = mask
-        self.flags.mask = mask
-        self.wcs._update_mask(mask)
+        updated_mask = self.data.mask | mask
+
+        self.data.mask = updated_mask
+        self.uncertainty.mask = updated_mask
+        self.flags.mask = updated_mask
+        self.wcs._update_mask(updated_mask)
 
 
 
@@ -498,9 +514,22 @@ class Order(object):
         flags_mask = (self.flags.filled() == 0) & self.order_mask
         self._update_mask(~flags_mask)
 
+    def enable_instrument_model_masking(self):
+        instrument_model_mask = ((self.wcs.pix_to_wave_ma.data > 0.0) &
+                                 self.order_mask)
+        self._update_mask(~instrument_model_mask)
 
+    def standard_masking(self):
+        """
+        Flags everything with QUAL flag != 0 and everything less
+        than 0.
 
+        """
 
+        self.enable_flags_as_mask()
+        self.enable_instrument_model_masking()
+
+        self._update_mask(~((self.data.filled() > 0) & self.order_mask))
 
 
     def __repr__(self):

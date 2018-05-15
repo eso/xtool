@@ -341,13 +341,79 @@ class PSFSlopedMoffatTrace(PSFMoffatTrace):
             sigma, sigma_slope, beta))
         return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))
 
-    def evaluate(self, amplitude, trace_pos, trace_slope, sigma, beta):
-        row_ids = self.pixel_table.pixel_id.values.astype(np.int64)
-        column_ids = self.pixel_table.wavelength_pixel_id.values.astype(
-            np.int64)
-        matrix_values = self.pixel_table.sub_x.values
-        varying_trace_pos = (
-            trace_pos + trace_slope * self.pixel_table.normaled_wavelength)
-        moffat_profile = self._moffat(self.pixel_table.slit_pos.values,
-                                      varying_trace_pos, sigma, beta)
+
+class PSFPolynomialMoffatTrace(PSFMoffatTrace):
+
+    psf_amplitude = modeling.Parameter(bounds=(0, np.inf))
+    resolution_trace = modeling.Parameter(default=10000, bounds=(1000, 20000))
+
+    trace0 = modeling.Parameter(default=1.0, bounds=(-6, 6))
+    trace1 = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    trace2 = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    trace3 = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    trace4 = modeling.Parameter(default=0.0, bounds=(-6, 6))
+    sigma0 = modeling.Parameter(default=1.0, bounds=(0, 99))
+    sigma1 = modeling.Parameter(default=0.0, bounds=(0, 99))
+    sigma2 = modeling.Parameter(default=0.0, bounds=(0, 99))
+    sigma3 = modeling.Parameter(default=0.0, bounds=(0, 99))
+    sigma4 = modeling.Parameter(default=0.0, bounds=(0, 99))
+
+
+    beta = modeling.Parameter(default=1.5, fixed=True, bounds=(1.1, 3.))
+
+    matrix_parameter = ['psf_amplitude']
+
+    def __init__(self, pixel_to_wavelength, pixel_to_slit_pos, wavelength,
+                 sigma_impact_width=10.):
+        psf_amplitude = np.empty_like(wavelength) * np.nan
+        super(PSFMoffatTrace, self).__init__(
+            psf_amplitude=psf_amplitude)
+        self._initialize_model(pixel_to_wavelength, wavelength)
+        impact_range = (
+            (wavelength.mean() / self.resolution_trace) * FWHM_TO_SIGMA *
+            sigma_impact_width)
+        self.row_ids, self.column_ids = self._initialize_matrix_coordinates(
+            pixel_to_wavelength, wavelength, impact_range)
+
+        self.pixel_wavelength = pixel_to_wavelength[self.row_ids]
+        self.normed_pixel_wavelength = (
+            (self.pixel_to_wavelength - self.pixel_wavelength.min()) /
+            (self.pixel_wavelength.max() - self.pixel_wavelength.min()))
+        self.normed_pixel_wavelength = (
+            (self.normed_pixel_wavelength - 0.5) * 2)[self.row_ids]
+        self.virt_pixel_wavelength = self.wavelength[self.column_ids]
+        self.slit_pos = pixel_to_slit_pos[self.row_ids]
+
+    def generate_design_matrix_coordinates(
+            self, resolution_trace, trace0, trace1, trace2, trace3, trace4,
+                                           sigma0, sigma1, sigma2, sigma3, sigma4, beta):
+        row_ids = self.row_ids
+        column_ids = self.column_ids
+        psf_sigma = (
+            (self.virt_pixel_wavelength / resolution_trace) * FWHM_TO_SIGMA)
+
+        norm_factor = 1 / (psf_sigma * np.sqrt(2 * np.pi))
+        pixel_wavelength = self.pixel_wavelength
+        virt_pixel_wavelength = self.virt_pixel_wavelength
+        matrix_values = norm_factor * ne.evaluate(
+            'exp(-0.5 * '
+            '(pixel_wavelength - virt_pixel_wavelength)**2 '
+            '/ psf_sigma**2)', )
+
+
+        normed_wavelength = self.normed_pixel_wavelength
+        varying_trace_pos = np.polyval([trace4, trace3, trace2, trace1, trace0],
+                                       normed_wavelength)
+        varying_sigma = np.abs(np.polyval([sigma4, sigma3, sigma2, sigma1, sigma0],normed_wavelength))
+        moffat_profile = self._moffat(self.slit_pos,
+                                      varying_trace_pos, varying_sigma, beta)
         return row_ids, column_ids, matrix_values * moffat_profile
+
+    def generate_design_matrix(
+            self, resolution_trace, trace0, trace1, trace2, trace3, trace4,
+            sigma0, sigma1, sigma2, sigma3, sigma4, beta):
+        row_ids, column_ids, matrix_values = (
+            self.generate_design_matrix_coordinates(
+                resolution_trace, trace0, trace1, trace2, trace3, trace4,
+                sigma0, sigma1, sigma2, sigma3, sigma4, beta))
+        return sparse.coo_matrix((matrix_values, (row_ids, column_ids)))

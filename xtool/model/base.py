@@ -24,7 +24,8 @@ class VirtualPixelWavelength(modeling.Model):
                                     'NIR' : 0.03}
 
     @classmethod
-    def from_order(cls, order, poly_order=(2, 3), wavelength_sampling=None):
+    def from_order(cls, order, poly_order=(2, 3), wavelength_sampling=None,
+                   sub_sampling=5):
         """
         Instantiate a Virtualpixel table from the order raw Lookup Table WCS
         and then fitting a Polynomial WCS with given orde
@@ -56,7 +57,8 @@ class VirtualPixelWavelength(modeling.Model):
             wavelength_sampling)
 
         return VirtualPixelWavelength(polynomial_wcs, order.wcs,
-                                      wavelength_bins)
+                                      wavelength_bins,
+                                      sub_sampling=sub_sampling)
 
     def __init__(self, polynomial_wcs, lut_wcs, raw_wavelength_pixels,
                  sub_sampling=5):
@@ -180,10 +182,10 @@ class VirtualPixelWavelength(modeling.Model):
                 pixel_table.wavelength_pixel_id))
 
         pixel_table['wavelength'] = self.wavelength_pixels[
-            pixel_table.wavelength_pixel_id]
+            pixel_table.wavelength_pixel_id].astype(np.float64)
 
         pixel_table['slit_pos'] = self.lut_wcs.pix_to_slit[
-            pixel_table.pixel_id]
+            pixel_table.pixel_id].astype(np.float64)
 
         pixel_table['normed_wavelength'] = (
                 (pixel_table.wavelength - pixel_table.wavelength.min()) /
