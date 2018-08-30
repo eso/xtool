@@ -4,6 +4,7 @@ dependencies:
 - astropy
 - matplotlib
 - nbformat
+- numexpr
 - notebook
 - pandas=0.18.0
 - scipy
