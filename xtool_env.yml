@@ -1,13 +1,13 @@
 name: xtool
 dependencies:
 - python=2.7.11
-- astropy
+- astropy>1.0
 - matplotlib
 - nbformat
 - numexpr
 - notebook
 - pandas=0.18.0
-- scipy
+- scipy>0.9
 - ptyprocess=0.5
 - jupyter=1.0.0
 - sphinx=1.3.5
